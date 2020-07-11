@@ -2,3 +2,5 @@ session.json
 config/*
 temp/*
 test-config/*
+
+src/__pycache__

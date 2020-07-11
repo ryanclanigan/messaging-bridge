@@ -6,10 +6,11 @@ import fbchat
 import discord
 
 from random_generators import RandomMessageGenerator
+from base_client import BaseClient
 
 
-class FacebookClient(fbchat.Client):
-    def __init__(self, facebook_config):
+class FacebookClient(fbchat.Client, BaseClient):
+    def __init__(self, facebook_config, send_handler):
         cookies = {}
         try:
             # Load the session cookies
@@ -32,30 +33,10 @@ class FacebookClient(fbchat.Client):
         self.cookies = cookies
         self.email = facebook_config.email
         self.password = facebook_config.password
+        self.send_handler = send_handler
 
         with open("session.json", "w") as f:
             json.dump(self.getSession(), f)
-
-    def set_discord_client(self, discord_client):
-        self.discord_client = discord_client
-
-    async def send_message(self, channel, message=None, files=None):
-        try:
-            if files is not None:
-                for file in files:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(file) as resp:
-                            if resp.status != 200:
-                                return await channel.send("Could not download file...")
-                            data = io.BytesIO(await resp.read())
-                            await channel.send(
-                                file=discord.File(data, "cool_image.png")
-                            )
-
-            if message is not None:
-                await channel.send(message)
-        except Exception as e:
-            print(e)
 
     def onMessage(self, author_id, message_object, thread_id, thread_type, **kwargs):
         if not self.isLoggedIn():
@@ -69,24 +50,50 @@ class FacebookClient(fbchat.Client):
         if thread_id != self.thread_id:
             return
 
-        if not hasattr(self, "discord_client") or self.discord_client == None:
-            return
-
         user = self.fetchUserInfo(author_id)[author_id]
-        channel = self.discord_client.get_channel(self.discord_client.channel)
 
         if message_object.text is not None:
-            message = (
+            text = (
                 user.name
                 + RandomMessageGenerator.get_random_said()
                 + message_object.text
             )
         else:
-            message = None
+            text = None
 
         if len(message_object.attachments) > 0:
-            files = [self.fetchImageUrl(f.uid) for f in message_object.attachments]
+            urls = [self.fetchImageUrl(f.uid) for f in message_object.attachments]
         else:
-            files = None
+            urls = None
 
-        self.discord_client.loop.create_task(self.send_message(channel, message, files))
+        self.send_handler(self.get_client_name(), text, urls)
+
+    def send_message(self, text=None, urls=None):
+        if text is not None:
+            self.send(
+                fbchat.Message(text=text),
+                thread_id=self.thread_id,
+                thread_type=self.thread_type,
+            )
+
+        if urls is not None:
+            for url in urls:
+                self.sendRemoteImage(
+                    url,
+                    message=fbchat.Message(),
+                    thread_id=self.thread_id,
+                    thread_type=self.thread_type,
+                )
+
+    @staticmethod
+    def get_client_name():
+        return "Facebook"
+
+    def is_threadable(self) -> bool:
+        return True
+
+    def run_client(self, *args):
+        self.listen()
+
+    def get_run_args(self):
+        return ()

@@ -4,22 +4,47 @@ import json
 from discord_client import DiscordClient
 from facebook_client import FacebookClient
 
+
 class Bridge:
-    def __init__(self, discord_config, facebook_config):
-        self.discord_client = DiscordClient(discord_config)
-        self.facebook_client = FacebookClient(facebook_config)
-        self.discord_client.set_fb_client(self.facebook_client)
-        self.facebook_client.set_discord_client(self.discord_client)
+    registered_clients = {}
 
-    def run(self, discord_token):
-        facebook_listener = threading.Thread(target=self.facebook_client.listen)
-        facebook_listener.start()
+    def __init__(self, *clients):
+        for client in clients:
+            Bridge.registered_clients[client.get_client_name()] = client
 
-        self.discord_client.run(discord_token)
+    def run(self):
+        threadables = []
+        non_threadables = []
+        for _, client in Bridge.registered_clients.items():
+            if client.is_threadable():
+                threadables.append(client)
+            else:
+                non_threadables.append(client)
 
-        facebook_listener.join()
+        listeners = []
+        for threadable in threadables:
+            listener = threading.Thread(
+                target=threadable.run_client, args=threadable.get_run_args()
+            )
+
+            listeners.append(listener)
+            listener.start()
+
+        for non_threadable in non_threadables:
+            non_threadable.run_client(non_threadable.get_run_args())
+
+        for listener in listeners:
+            listener.join()
 
         print("This message indicates these threads finished, which is concerning")
+
+    @staticmethod
+    def send_handler(name, text, urls):
+        for client_name, client in Bridge.registered_clients.items():
+            if client_name == name:
+                continue
+
+            client.send_message(text, urls)
 
 
 class Config:
@@ -28,10 +53,10 @@ class Config:
 
 
 with open("config/discord.json") as dj:
-    discord_config = Config(dj)
+    discord_client = DiscordClient(Config(dj), Bridge.send_handler)
 
 with open("config/facebook.json") as fj:
-    facebook_config = Config(fj)
+    facebook_client = FacebookClient(Config(fj), Bridge.send_handler)
 
-bridge = Bridge(discord_config, facebook_config)
-bridge.run(discord_config.client_token)
+bridge = Bridge(discord_client, facebook_client)
+bridge.run()

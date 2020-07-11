@@ -61,9 +61,15 @@ class FacebookClient(fbchat.Client, BaseClient):
         else:
             text = None
 
-        if len(message_object.attachments) > 0:
-            urls = [self.fetchImageUrl(f.uid) for f in message_object.attachments]
-        else:
+        urls = [
+            self.fetchImageUrl(f.uid)
+            for f in filter(
+                lambda x: not isinstance(x, fbchat.ShareAttachment),
+                message_object.attachments,
+            )
+        ]
+
+        if urls == []:
             urls = None
 
         self.send_handler(self.get_client_name(), text, urls)

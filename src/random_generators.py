@@ -43,5 +43,4 @@ class RandomMessageGenerator:
         "verbatimed",
     ]
 
-    def get_random_said():
-        return f" {random.choice(RandomMessageGenerator.saids)}: "
+    get_random_said = lambda: f" {random.choice(RandomMessageGenerator.saids)}: "

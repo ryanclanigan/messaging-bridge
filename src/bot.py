@@ -4,8 +4,9 @@ import discord
 import threading 
 import json
 import asyncio
+import io
+import aiohttp
 
-bot_prefix = '$$'
 
 class DiscordClient(discord.Client):
   def __init__(self, discord_config):
@@ -25,13 +26,17 @@ class DiscordClient(discord.Client):
     if not hasattr(self, 'fb_client'):
       return
 
-    if not message.content.startswith(bot_prefix):
-      new_message = fbchat.Message(text=bot_prefix + message.author.name + ' said: ' + message.content)
-      try:
-        response = self.fb_client.send(new_message, thread_id=self.fb_client.thread_id, thread_type=self.fb_client.thread_type)
-        print(response)
-      except Exception as e:
-        print(e)
+    try:
+      if message.content != None and len(message.content) > 0:
+        new_message = fbchat.Message(text=message.author.name + ' said: ' + message.content)
+        self.fb_client.send(new_message, thread_id=self.fb_client.thread_id, thread_type=self.fb_client.thread_type)
+
+      if len(message.attachments) > 0:
+        for attachment in message.attachments:
+          self.fb_client.sendRemoteImage(attachment.url, message=fbchat.Message(), thread_id=self.fb_client.thread_id, thread_type=self.fb_client.thread_type)
+
+    except Exception as e:
+      print(e)
 
   async def on_ready(self):
     print('We have logged in as {0.user}'.format(self))        
@@ -62,10 +67,19 @@ class FacebookClient(fbchat.Client):
   def set_discord_client(self, discord_client):
     self.discord_client = discord_client
 
-  async def send_message(self, channel, message):
+  async def send_message(self, channel, message=None, files=None):
     try:
-      response = await channel.send(message)
-      print(response)
+      if files is not None:
+        for file in files:
+          async with aiohttp.ClientSession() as session:
+            async with session.get(file) as resp:
+              if resp.status != 200:
+                  return await channel.send('Could not download file...')
+              data = io.BytesIO(await resp.read())
+              await channel.send(file=discord.File(data, 'cool_image.png'))
+
+      if message is not None:
+        await channel.send(message)
     except Exception as e:
       print(e)
 
@@ -75,17 +89,30 @@ class FacebookClient(fbchat.Client):
       with open('session.json', 'w') as f:
         json.dump(self.getSession(), f)
 
+    if author_id == self.uid:
+      return
+
     if thread_id != self.thread_id: 
       return
 
     if not hasattr(self, 'discord_client') or self.discord_client == None:
       return
 
-    if not message_object.text.startswith(bot_prefix):
-      user = self.fetchUserInfo(author_id)[author_id]
-      message = bot_prefix + user.name + ' said: ' + message_object.text
-      channel = self.discord_client.get_channel(self.discord_client.channel)
-      self.discord_client.loop.create_task(self.send_message(channel, message))
+
+    user = self.fetchUserInfo(author_id)[author_id]
+    channel = self.discord_client.get_channel(self.discord_client.channel)
+
+    if message_object.text is not None:
+      message = user.name + ' said: ' + message_object.text
+    else:
+      message = None
+
+    if len(message_object.attachments) > 0:
+      files = [self.fetchImageUrl(f.uid) for f in message_object.attachments]
+    else:
+      files = None
+
+    self.discord_client.loop.create_task(self.send_message(channel, message, files))
 
 class Bridge:
   def __init__(self, discord_config, facebook_config):

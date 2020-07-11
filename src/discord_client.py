@@ -1,8 +1,8 @@
 import discord
-import fbchat
 import asyncio
 import io
 import aiohttp
+import utils
 
 from random_generators import RandomMessageGenerator
 from base_client import BaseClient
@@ -25,8 +25,9 @@ class DiscordClient(discord.Client, BaseClient):
         try:
             if message.content != None and len(message.content) > 0:
                 text = (
-                    message.author.name
-                    + RandomMessageGenerator.get_random_said()
+                    utils.format_message(
+                        message.author.name + RandomMessageGenerator.get_random_said()
+                    )
                     + message.content
                 )
             else:

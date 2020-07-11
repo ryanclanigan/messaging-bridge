@@ -3,7 +3,7 @@ import asyncio
 import io
 import aiohttp
 import fbchat
-import discord
+import utils
 
 from random_generators import RandomMessageGenerator
 from base_client import BaseClient
@@ -54,8 +54,9 @@ class FacebookClient(fbchat.Client, BaseClient):
 
         if message_object.text is not None:
             text = (
-                user.name
-                + RandomMessageGenerator.get_random_said()
+                utils.format_message(
+                    user.name + RandomMessageGenerator.get_random_said()
+                )
                 + message_object.text
             )
         else:
